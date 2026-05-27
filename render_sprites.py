@@ -26,14 +26,15 @@ from PIL import Image
 
 
 DIRECTIONS = [
-    ("S",   180),
-    ("SW",  225),
-    ("W",   270),
-    ("NW",  315),
-    ("N",     0),
-    ("NE",   45),
-    ("E",    90),
-    ("SE",  135),
+    ("BACK_LEFT",     180),
+    ("BACK",          225),
+    ("BACK_RIGHT",    270),
+    ("RIGHT",         315),
+    ("FRONT_RIGHT",     0),
+    ("FRONT",          45),
+    ("FRONT_LEFT",     90),
+    ("LEFT",          135),
+    ("BACK_LEFT",     180),
 ]
 
 
@@ -307,7 +308,7 @@ def main():
         sheet.save(sheet_path, "PNG")
         print(f"\nSprite sheet -> {sheet_path}")
 
-    print(f"\nDone. Saved {len(images)} sprites to '{args.outdir}/'")
+    print(f"\nDone. Saved 8 sprites to '{args.outdir}/'")
     pygame.quit()
 
 

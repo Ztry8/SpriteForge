@@ -11,7 +11,7 @@ When making retro-style games (like Daggerfall or classic Doom-era titles),
 Creating these by hand is tedious and inconsistent.
 
 This script automates the process: given a .obj model and a texture,    
-it renders 8 directional views (N, NE, E, SE, S, SW, W, NW) using OpenGL    
+it renders 8 directional views (`BACK_LEFT`, `BACK`, `BACK_RIGHT`, `RIGHT`, `FRONT_RIGHT`, `FRONT`, `FRONT_LEFT`, `LEFT`, `BACK_LEFT`) using OpenGL    
 and saves each frame as a PNG sprite, ready to use in your game engine.    
 Optionally, it can also produce a single sprite sheet with all 8 directions combined.
 
@@ -77,33 +77,29 @@ Argument	Default	Meaning
 
 #### Example of output
 ```
-python render_sprites.py --model goblin.obj --texture goblin.png --size 256 --sheet
-python render_sprites.py --model chest.obj --texture chest.png --bg green --outdir chest_sprites
-python render_sprites.py --model hero.obj --texture hero.png --elevation 25 --prefix hero
-Output
-Loading model: goblin.obj
-  Vertices: 1423, Triangles: 2688
-Loading texture: goblin.png
-Building VBO with flat normals...
+$ python render_sprites.py --model hero.obj --texture hero.png --elevation 25 --prefix hero
+Loading model: hero.obj
+  Vertices: 203, Triangles: 402
+Loading texture: hero.png
+Building VBO with smooth normals...
 
-Rendering sprites 256x256px...
+Rendering sprites 512x512px...
 
-  S   (180 deg) -> sprites/sprite_S.png
-  SW  (225 deg) -> sprites/sprite_SW.png
-  W   (270 deg) -> sprites/sprite_W.png
-  NW  (315 deg) -> sprites/sprite_NW.png
-  N   (  0 deg) -> sprites/sprite_N.png
-  NE  ( 45 deg) -> sprites/sprite_NE.png
-  E   ( 90 deg) -> sprites/sprite_E.png
-  SE  (135 deg) -> sprites/sprite_SE.png
-
-Sprite sheet -> sprites/sprite_sheet.png
+  BACK_LEFT (180 deg) -> sprites/sprite_BACK_LEFT.png
+  BACK (225 deg) -> sprites/sprite_BACK.png
+  BACK_RIGHT (270 deg) -> sprites/sprite_BACK_RIGHT.png
+  RIGHT (315 deg) -> sprites/sprite_RIGHT.png
+  FRONT_RIGHT (  0 deg) -> sprites/sprite_FRONT_RIGHT.png
+  FRONT ( 45 deg) -> sprites/sprite_FRONT.png
+  FRONT_LEFT ( 90 deg) -> sprites/sprite_FRONT_LEFT.png
+  LEFT (135 deg) -> sprites/sprite_LEFT.png
+  BACK_LEFT (180 deg) -> sprites/sprite_BACK_LEFT.png
 
 Done. Saved 8 sprites to 'sprites/'
 ```
 
 #### Example of result
  
-![N](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_N.png)
-![NE](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_NE.png)
-![E](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_E.png)
+![N](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_FRONT.png)
+![NE](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_FRONT_RIGHT.png)
+![E](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_FRONT_LEFT.png)
