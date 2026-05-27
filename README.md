@@ -1,4 +1,8 @@
 # SpriteForge
+
+[![GitHub last commit](https://img.shields.io/github/last-commit/ztry8/spriteforge)](https://github.com/ztry8/spriteforge/commits)
+[![License](https://img.shields.io/github/license/ztry8/spriteforge)](https://github.com/ztry8/spriteforge/blob/main/LICENSE)
+
 ## Simple and fast tool to render 8-directional sprites from 3D models
 
 ### About
@@ -96,3 +100,7 @@ Sprite sheet -> sprites/sprite_sheet.png
 
 Done. Saved 8 sprites to 'sprites/'
 ```
+
+![N](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_N.png)
+![NE](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_NE.png)
+![E](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_E.png)
