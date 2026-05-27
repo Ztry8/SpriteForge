@@ -37,28 +37,58 @@ DIRECTIONS = [
 ]
 
 
-def compute_flat_normals(verts, faces):
+def compute_smooth_normals(verts, faces):
+    pos = verts["pos"]
+    uv  = verts["uv"]
+    num_verts = len(pos)
+
+    smooth_normals = np.zeros((num_verts, 3), dtype=np.float64)
+
+    for tri in faces:
+        (vi0, _, _), (vi1, _, _), (vi2, _, _) = tri
+
+        p0 = pos[vi0].astype(np.float64)
+        p1 = pos[vi1].astype(np.float64)
+        p2 = pos[vi2].astype(np.float64)
+
+        e10 = p1 - p0
+        e20 = p2 - p0
+        e01 = p0 - p1
+        e21 = p2 - p1
+        e02 = p0 - p2
+        e12 = p1 - p2
+
+        face_normal = np.cross(e10, e20)
+        length = np.linalg.norm(face_normal)
+        if length < 1e-12:
+            continue
+        face_normal /= length
+
+        def angle_between(a, b):
+            na = np.linalg.norm(a)
+            nb = np.linalg.norm(b)
+            if na < 1e-12 or nb < 1e-12:
+                return 0.0
+            cos_a = np.clip(np.dot(a, b) / (na * nb), -1.0, 1.0)
+            return math.acos(cos_a)
+
+        smooth_normals[vi0] += face_normal * angle_between(e10,  e20)
+        smooth_normals[vi1] += face_normal * angle_between(e01,  e21)
+        smooth_normals[vi2] += face_normal * angle_between(e02,  e12)
+
+    lengths = np.linalg.norm(smooth_normals, axis=1, keepdims=True)
+    lengths = np.where(lengths < 1e-9, 1.0, lengths)
+    smooth_normals /= lengths
+
     buf = []
     for tri in faces:
-        (vi0, vti0, _), (vi1, vti1, _), (vi2, vti2, _) = tri
-
-        p0 = verts["pos"][vi0]
-        p1 = verts["pos"][vi1]
-        p2 = verts["pos"][vi2]
-
-        edge1 = p1 - p0
-        edge2 = p2 - p0
-        n = np.cross(edge1, edge2)
-        length = np.linalg.norm(n)
-        if length > 1e-9:
-            n /= length
-        else:
-            n = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-
-        for vi, vti in ((vi0, vti0), (vi1, vti1), (vi2, vti2)):
-            px, py, pz = verts["pos"][vi]
-            nx, ny, nz = n
-            u, v = verts["uv"][vti] if verts["uv"] is not None and vti >= 0 else (0.0, 0.0)
+        for vi, vti, _ in tri:
+            px, py, pz = pos[vi]
+            nx, ny, nz = smooth_normals[vi]
+            if uv is not None and vti >= 0:
+                u, v = uv[vti]
+            else:
+                u, v = 0.0, 0.0
             buf.extend([px, py, pz, nx, ny, nz, u, v])
 
     return np.array(buf, dtype=np.float32)
@@ -119,7 +149,7 @@ def load_texture(path):
 
 
 def build_vbo(verts, faces):
-    buf = compute_flat_normals(verts, faces)
+    buf = compute_smooth_normals(verts, faces)
     vbo = glGenBuffers(1)
     glBindBuffer(GL_ARRAY_BUFFER, vbo)
     glBufferData(GL_ARRAY_BUFFER, buf.nbytes, buf, GL_STATIC_DRAW)
@@ -133,7 +163,7 @@ def render_frame(vbo, vertex_count, tex_id, azimuth_deg, elevation_deg, size, bg
     glClearColor(*bg_color)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-    glShadeModel(GL_FLAT)
+    glShadeModel(GL_SMOOTH)
 
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
@@ -159,25 +189,28 @@ def render_frame(vbo, vertex_count, tex_id, azimuth_deg, elevation_deg, size, bg
     glEnable(GL_LIGHT1)
     glEnable(GL_LIGHT2)
 
-    glLightfv(GL_LIGHT0, GL_POSITION, [1.5,  2.0,  1.5, 0.0])
-    glLightfv(GL_LIGHT0, GL_DIFFUSE,  [1.0,  0.95, 0.9, 1.0])
-    glLightfv(GL_LIGHT0, GL_SPECULAR, [0.7,  0.7,  0.7, 1.0])
+    glLightfv(GL_LIGHT0, GL_POSITION, [cam_x, cam_y, cam_z, 1.0])
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,  [1.10, 1.05, 1.00, 1.0])
+    glLightfv(GL_LIGHT0, GL_SPECULAR, [0.90, 0.90, 0.85, 1.0])
+    glLightf (GL_LIGHT0, GL_CONSTANT_ATTENUATION,  1.0)
+    glLightf (GL_LIGHT0, GL_LINEAR_ATTENUATION,    0.0)
+    glLightf (GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.0)
 
-    glLightfv(GL_LIGHT1, GL_POSITION, [-2.0, 1.0, -1.0, 0.0])
-    glLightfv(GL_LIGHT1, GL_DIFFUSE,  [0.4,  0.45, 0.55, 1.0])
-    glLightfv(GL_LIGHT1, GL_SPECULAR, [0.0,  0.0,  0.0,  1.0])
+    glLightfv(GL_LIGHT1, GL_POSITION, [-cam_x * 0.5, cam_y * 0.3, -cam_z * 0.5, 0.0])
+    glLightfv(GL_LIGHT1, GL_DIFFUSE,  [0.30, 0.35, 0.45, 1.0])
+    glLightfv(GL_LIGHT1, GL_SPECULAR, [0.00, 0.00, 0.00, 1.0])
 
-    glLightfv(GL_LIGHT2, GL_POSITION, [0.0, -1.0, -2.0, 0.0])
-    glLightfv(GL_LIGHT2, GL_DIFFUSE,  [0.2,  0.2,  0.25, 1.0])
-    glLightfv(GL_LIGHT2, GL_SPECULAR, [0.0,  0.0,  0.0,  1.0])
+    glLightfv(GL_LIGHT2, GL_POSITION, [0.0, 4.0, 0.0, 0.0])
+    glLightfv(GL_LIGHT2, GL_DIFFUSE,  [0.25, 0.22, 0.18, 1.0])
+    glLightfv(GL_LIGHT2, GL_SPECULAR, [0.00, 0.00, 0.00, 1.0])
 
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.15, 0.15, 0.2, 1.0])
-    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.30, 0.28, 0.32, 1.0])
+    glLightModeli (GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)
 
-    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT,   [0.25, 0.25, 0.25, 1.0])
-    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE,   [1.0,  1.0,  1.0,  1.0])
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  [0.4,  0.4,  0.4,  1.0])
-    glMaterialf (GL_FRONT_AND_BACK, GL_SHININESS, 48.0)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT,   [0.20, 0.20, 0.20, 1.0])
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE,   [1.00, 1.00, 1.00, 1.0])
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  [0.25, 0.25, 0.25, 1.0])
+    glMaterialf (GL_FRONT_AND_BACK, GL_SHININESS, 24.0)
 
     glEnable(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -244,7 +277,7 @@ def main():
     print(f"Loading texture: {args.texture}")
     tex_id = load_texture(args.texture)
 
-    print("Building VBO with flat normals...")
+    print("Building VBO with smooth normals...")
     vbo, vertex_count = build_vbo(verts, faces)
 
     images = []
