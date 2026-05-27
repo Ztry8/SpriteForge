@@ -75,6 +75,7 @@ Argument	Default	Meaning
 
 ### Examples
 
+#### Example of output
 ```
 python render_sprites.py --model goblin.obj --texture goblin.png --size 256 --sheet
 python render_sprites.py --model chest.obj --texture chest.png --bg green --outdir chest_sprites
@@ -101,6 +102,8 @@ Sprite sheet -> sprites/sprite_sheet.png
 Done. Saved 8 sprites to 'sprites/'
 ```
 
+#### Example of result
+ 
 ![N](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_N.png)
 ![NE](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_NE.png)
 ![E](https://github.com/Ztry8/SpriteForge/blob/main/sprites/sprite_E.png)
