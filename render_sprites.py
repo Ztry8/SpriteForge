@@ -3,10 +3,11 @@ import os
 import math
 import argparse
 import ctypes
+import re
 import numpy as np
 
 parser = argparse.ArgumentParser(description="Render 8-directional sprites from OBJ model")
-parser.add_argument("--model",     required=True,  help="Path to .obj file")
+parser.add_argument("--model",     required=False, help="Path to .obj file (static mode)")
 parser.add_argument("--texture",   required=True,  help="Path to texture (PNG/JPG)")
 parser.add_argument("--size",      type=int, default=512, help="Sprite size in pixels (default 512)")
 parser.add_argument("--bg",        default="transparent", choices=["transparent", "black", "white", "green"],
@@ -16,6 +17,17 @@ parser.add_argument("--prefix",    default="sprite",  help="Output filename pref
 parser.add_argument("--sheet",     action="store_true", help="Also save a sprite sheet")
 parser.add_argument("--elevation", type=float, default=15.0,
                     help="Camera elevation angle in degrees (0 = horizon, 30 = top-down)")
+parser.add_argument("--animation", nargs="+", metavar="FRAME_PATH",
+                    help=(
+                        "Animation frames. Pass paths with a printf-style counter pattern, e.g.:\n"
+                        "  walking_%%06d.obj\n"
+                        "or explicit list:\n"
+                        "  walking_000000.obj walking_000001.obj ...\n"
+                        "You can also specify the frame count first:\n"
+                        "  5 walking_%%06d.obj\n"
+                        "Frames are rendered for every direction, producing:\n"
+                        "  <prefix>_<DIRECTION>_f<NNN>.png"
+                    ))
 args = parser.parse_args()
 
 import pygame
@@ -37,6 +49,41 @@ DIRECTIONS = [
     ("BACK_LEFT",     180),
 ]
 
+def resolve_animation_frames(animation_args):
+    if not animation_args:
+        return []
+
+    frame_count = None
+    paths_args = animation_args[:]
+    if re.fullmatch(r"\d+", animation_args[0]):
+        frame_count = int(animation_args[0])
+        paths_args = animation_args[1:]
+
+    if len(paths_args) == 0:
+        raise ValueError("--animation requires at least one path/pattern after the optional frame count.")
+
+    if len(paths_args) == 1 and re.search(r"%\d*d", paths_args[0]):
+        pattern = paths_args[0]
+        if frame_count is not None:
+            frames = [pattern % i for i in range(1, frame_count + 1)]
+        else:
+            directory = os.path.dirname(pattern) or "."
+            basename  = os.path.basename(pattern)
+
+            regex_str = re.sub(r"%\d*d", r"(\\d+)", re.escape(basename))
+            regex = re.compile(regex_str)
+            candidates = sorted(
+                f for f in os.listdir(directory) if regex.fullmatch(f)
+            )
+
+            if not candidates:
+                raise FileNotFoundError(
+                    f"No files matching pattern '{pattern}' found in '{directory}'."
+                )
+            frames = [os.path.join(directory, c) for c in candidates]
+        return frames
+
+    return paths_args
 
 def compute_smooth_normals(verts, faces):
     pos = verts["pos"]
@@ -159,6 +206,10 @@ def build_vbo(verts, faces):
     return vbo, vertex_count
 
 
+def free_vbo(vbo):
+    glDeleteBuffers(1, [vbo])
+
+
 def render_frame(vbo, vertex_count, tex_id, azimuth_deg, elevation_deg, size, bg_color):
     glViewport(0, 0, size, size)
     glClearColor(*bg_color)
@@ -247,6 +298,36 @@ def grab_frame(size, bg_transparent):
         img = Image.frombytes("RGB", (size, size), pixels)
     return img.transpose(Image.FLIP_TOP_BOTTOM)
 
+def save_static_sheet(images, SIZE, bg_transparent, outdir, prefix):
+    cols, rows = 4, 2
+    sheet = Image.new(
+        "RGBA" if bg_transparent else "RGB",
+        (SIZE * cols, SIZE * rows), (0, 0, 0, 0)
+    )
+    for i, (_name, _az, img) in enumerate(images):
+        sheet.paste(img, ((i % cols) * SIZE, (i // cols) * SIZE))
+    sheet_path = os.path.join(outdir, f"{prefix}_sheet.png")
+    sheet.save(sheet_path, "PNG")
+    print(f"  Sprite sheet -> {sheet_path}")
+
+def save_animation_sheet(all_frames, SIZE, bg_transparent, outdir, prefix):
+    from collections import defaultdict
+    by_dir = defaultdict(list)
+    for dir_name, _az, frame_idx, img in all_frames:
+        by_dir[dir_name].append((frame_idx, img))
+
+    for dir_name, frame_list in by_dir.items():
+        frame_list.sort(key=lambda x: x[0])
+        n = len(frame_list)
+        sheet = Image.new(
+            "RGBA" if bg_transparent else "RGB",
+            (SIZE * n, SIZE), (0, 0, 0, 0)
+        )
+        for col, (_fi, img) in enumerate(frame_list):
+            sheet.paste(img, (col * SIZE, 0))
+        sheet_path = os.path.join(outdir, f"{prefix}_{dir_name}_sheet.png")
+        sheet.save(sheet_path, "PNG")
+        print(f"  Animation sheet [{dir_name}] -> {sheet_path}")
 
 def main():
     SIZE = args.size
@@ -261,6 +342,20 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
 
+    animation_frames = []
+    if args.animation:
+        animation_frames = resolve_animation_frames(args.animation)
+        if not animation_frames:
+            print("ERROR: --animation resolved to zero frames.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Animation mode: {len(animation_frames)} frame(s) detected.")
+        for i, p in enumerate(animation_frames):
+            print(f"  [{i:04d}] {p}")
+    else:
+        if not args.model:
+            print("ERROR: --model is required when --animation is not used.", file=sys.stderr)
+            sys.exit(1)
+
     pygame.init()
     pygame.display.set_mode((SIZE, SIZE), DOUBLEBUF | OPENGL | NOFRAME)
     pygame.display.set_caption("Sprite Renderer")
@@ -271,44 +366,85 @@ def main():
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-    print(f"Loading model: {args.model}")
-    verts, faces = load_obj(args.model)
-    print(f"  Vertices: {len(verts['pos'])}, Triangles: {len(faces)}")
-
-    print(f"Loading texture: {args.texture}")
+    print(f"\nLoading texture: {args.texture}")
     tex_id = load_texture(args.texture)
 
-    print("Building VBO with smooth normals...")
-    vbo, vertex_count = build_vbo(verts, faces)
+    if not animation_frames:
+        print(f"Loading model: {args.model}")
+        verts, faces = load_obj(args.model)
+        print(f"  Vertices: {len(verts['pos'])}, Triangles: {len(faces)}")
 
-    images = []
-    print(f"\nRendering sprites {SIZE}x{SIZE}px...\n")
+        print("Building VBO with smooth normals...")
+        vbo, vertex_count = build_vbo(verts, faces)
 
-    for name, azimuth in DIRECTIONS:
-        render_frame(vbo, vertex_count, tex_id,
-                     azimuth, args.elevation, SIZE, bg_color)
-        pygame.display.flip()
+        images = []
+        print(f"\nRendering sprites {SIZE}x{SIZE}px...\n")
 
-        img = grab_frame(SIZE, bg_transparent)
-        images.append((name, azimuth, img))
+        for name, azimuth in DIRECTIONS:
+            render_frame(vbo, vertex_count, tex_id,
+                         azimuth, args.elevation, SIZE, bg_color)
+            pygame.display.flip()
 
-        out_path = os.path.join(args.outdir, f"{args.prefix}_{name}.png")
-        img.save(out_path, "PNG")
-        print(f"  {name:3s} ({azimuth:3d} deg) -> {out_path}")
+            img = grab_frame(SIZE, bg_transparent)
+            images.append((name, azimuth, img))
 
-    if args.sheet:
-        cols, rows = 4, 2
-        sheet = Image.new("RGBA" if bg_transparent else "RGB",
-                          (SIZE * cols, SIZE * rows), (0, 0, 0, 0))
-        for i, (name, azimuth, img) in enumerate(images):
-            x = (i % cols) * SIZE
-            y = (i // cols) * SIZE
-            sheet.paste(img, (x, y))
-        sheet_path = os.path.join(args.outdir, f"{args.prefix}_sheet.png")
-        sheet.save(sheet_path, "PNG")
-        print(f"\nSprite sheet -> {sheet_path}")
+            dir_folder = os.path.join(args.outdir, name)
+            os.makedirs(dir_folder, exist_ok=True)
+            out_path = os.path.join(dir_folder, f"{args.prefix}_{name}.png")
 
-    print(f"\nDone. Saved 8 sprites to '{args.outdir}/'")
+            img.save(out_path, "PNG")
+            print(f"  {name:12s} ({azimuth:3d} deg) -> {out_path}")
+
+        if args.sheet:
+            save_static_sheet(images, SIZE, bg_transparent, args.outdir, args.prefix)
+
+        print(f"\nDone. Saved {len(DIRECTIONS)} sprites to '{args.outdir}/'")
+
+    else:
+        total = len(animation_frames) * len(DIRECTIONS)
+        done  = 0
+        all_rendered = []
+
+        print(f"\nRendering animation: {len(animation_frames)} frames × "
+              f"{len(DIRECTIONS)} directions = {total} sprites ({SIZE}x{SIZE}px)...\n")
+
+        for frame_idx, obj_path in enumerate(animation_frames):
+            if not os.path.isfile(obj_path):
+                print(f"  WARNING: frame file not found, skipping: {obj_path}")
+                continue
+
+            verts, faces = load_obj(obj_path)
+            vbo, vertex_count = build_vbo(verts, faces)
+
+            for dir_name, azimuth in DIRECTIONS:
+                render_frame(vbo, vertex_count, tex_id,
+                             azimuth, args.elevation, SIZE, bg_color)
+                pygame.display.flip()
+
+                img = grab_frame(SIZE, bg_transparent)
+                all_rendered.append((dir_name, azimuth, frame_idx, img))
+
+                dir_folder = os.path.join(args.outdir, dir_name)
+                os.makedirs(dir_folder, exist_ok=True)
+                out_path = os.path.join(
+                    dir_folder,
+                    f"{args.prefix}_{dir_name}_f{frame_idx:04d}.png"
+                )
+
+                img.save(out_path, "PNG")
+                done += 1
+                print(f"  [{done:4d}/{total}] frame {frame_idx:04d}  "
+                      f"{dir_name:12s} ({azimuth:3d}°) -> {out_path}")
+
+            free_vbo(vbo)
+
+        if args.sheet:
+            print("\nGenerating per-direction animation sheets...")
+            save_animation_sheet(all_rendered, SIZE, bg_transparent,
+                                 args.outdir, args.prefix)
+
+        print(f"\nDone. Saved {done} sprites to '{args.outdir}/'")
+
     pygame.quit()
 
 
