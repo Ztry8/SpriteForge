@@ -396,6 +396,7 @@ def main():
             print(f"  {name:12s} ({azimuth:3d} deg) -> {out_path}")
 
         if args.sheet:
+            images.pop(0)
             save_static_sheet(images, SIZE, bg_transparent, args.outdir, args.prefix)
 
         print(f"\nDone. Saved {len(DIRECTIONS)} sprites to '{args.outdir}/'")
