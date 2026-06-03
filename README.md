@@ -25,6 +25,8 @@ Optionally, it can also produce a single sprite sheet with all 8 directions comb
 The camera elevation, sprite size, and background color are all configurable.    
 Transparent backgrounds are supported for direct use in engines without chroma keying.
 
+> Note: Correct sprites are only produced if the model is positioned along the X-axis and facing the negative Y-axis!
+
 ### Installation
 
 #### Windows
